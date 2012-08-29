@@ -1459,7 +1459,7 @@ class TestDelete(amo.tests.TestCase):
 
 
 class TestHome(amo.tests.TestCase):
-    fixtures = ['base/addon_3615']
+    fixtures = ['base/addon_3615', 'base/users']
 
     def setUp(self):
         assert self.client.login(username='del@icio.us', password='password')
@@ -1477,6 +1477,20 @@ class TestHome(amo.tests.TestCase):
         Addon.objects.all().delete()
         # Regular users (non-devs) should not see this promo.
         eq_(self.get_pq()('#devhub-sidebar #editor-promo').length, 0)
+
+    def test_my_addons(self):
+        addon = Addon.objects.get(id=3615)
+        self.client.login(username='regular@mozilla.com',
+                          password='password')
+        user = UserProfile.objects.get(id=999)
+        AddonUser.objects.create(user=user, addon=addon)
+        doc = self.get_pq()
+        eq_(doc('#my-addons .addon-item').length, 1)
+        eq_(doc('#my-addons').find('.addon-name').attr('href'),
+                addon.get_dev_url('edit'))
+
+        Addon.objects.all().delete()
+        eq_(self.get_pq()('#my-addons').length, 0)
 
 
 class TestActivityFeed(amo.tests.TestCase):
