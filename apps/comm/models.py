@@ -29,7 +29,8 @@ class CommunicationThread(amo.models.ModelBase):
 class CommunicationThreadCC(amo.models.ModelBase):
     thread = models.ForeignKey(CommunicationThread,
                                related_name='thread_cc')
-    user = models.ForeignKey('users.UserProfile')
+    user = models.ForeignKey('users.UserProfile',
+        related_name='comm_thread_cc')
 
     class Meta:
         db_table = 'comm_thread_cc'

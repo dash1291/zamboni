@@ -146,12 +146,12 @@ class SharedSecretAuthentication(Authentication):
                 email + settings.SECRET_KEY).hexdigest()
             matches = hmac.new(unique_id + settings.SECRET_KEY,
                                consumer_id, hashlib.sha512).hexdigest() == hm
+
             if matches:
                 try:
                     request.user = User.objects.get(email=email)
                 except User.DoesNotExist:
                     log.info('Auth token matches absent user (%s)' % email)
-                    return False
 
                 ACLMiddleware().process_request(request)
             else:
@@ -171,5 +171,17 @@ class RestOAuthAuthentication(BaseAuthentication, OAuthAuthentication):
         result = self.is_authenticated(request)
         if (isinstance(result, http.HttpUnauthorized)
             or not request.user):
+            return None
+        return (request.user, None)
+
+
+class RestSharedSecretAuthentication(BaseAuthentication,
+                                     SharedSecretAuthentication):
+    """SharedSecretAuthentication suitable for DRF."""
+
+    def authenticate(self, request):
+        result = SharedSecretAuthentication.is_authenticated(self, request) 
+        if (not result or not request.user):
+            log.debug('denied')
             return None
         return (request.user, None)
