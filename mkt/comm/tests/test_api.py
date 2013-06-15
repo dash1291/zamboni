@@ -1,3 +1,5 @@
+import json
+
 from django.core.urlresolvers import reverse
 
 from nose.tools import eq_
@@ -5,9 +7,10 @@ from test_utils import RequestFactory
 
 from amo.tests import addon_factory
 from comm.models import (CommunicationNote, CommunicationThread,
-                         CommunicationThreadCC)
+                         CommunicationThreadCC, CommunicationThreadToken)
 from mkt.api.tests.test_oauth import RestOAuth
 from mkt.comm.api import ThreadPermission
+from mkt.constants import comm as const
 from mkt.site.fixtures import fixture
 from mkt.webapps.models import Webapp
 
@@ -32,7 +35,7 @@ class TestThreadDetail(RestOAuth):
     def test_response(self):
         thread = CommunicationThread.objects.create(addon=self.addon)
         CommunicationNote.objects.create(thread=thread,
-            author=self.profile, note_type=0, body='something')
+            author=self.profile, note_type=const.NOACTION, body='something')
         res = self.client.get(reverse('comm-thread-detail',
                                       kwargs={'pk': thread.pk}))
         eq_(res.status_code, 200)
@@ -109,7 +112,7 @@ class TestThreadList(RestOAuth):
             read_permission_public=True)
         thread = CommunicationThread.objects.create(addon=self.addon)
         CommunicationNote.objects.create(author=self.profile, thread=thread,
-            note_type=0)
+            note_type=const.NOACTION)
         res = self.client.get(self.list_url)
         eq_(res.status_code, 200)
         eq_(len(res.json['objects']), 1)
@@ -117,7 +120,7 @@ class TestThreadList(RestOAuth):
     def test_addon_filter(self):
         thread = CommunicationThread.objects.create(addon=self.addon)
         CommunicationNote.objects.create(author=self.profile, thread=thread,
-            note_type=0, body='something')
+            note_type=const.NOACTION, body='something')
 
         res = self.client.get(self.list_url, {'app': '337141'})
         eq_(res.status_code, 200)
@@ -127,19 +130,60 @@ class TestThreadList(RestOAuth):
         res = self.client.get(self.list_url, {'app': '1000'})
         eq_(res.status_code, 404)
 
+    def test_creation(self):
+        thread = CommunicationThread.objects.create(addon=self.addon)
+        version = self.addon.current_version
+        res = self.client.post(self.list_url, data=json.dumps(
+            {'addon': self.addon.id, 'version': version.id}))
+
+        eq_(res.status_code, 201)
+
 
 class TestNote(RestOAuth):
-    fixtures = fixture('webapp_337141', 'user_2519')
+    fixtures = fixture('webapp_337141', 'user_2519', 'user_999')
 
     def setUp(self):
         super(TestNote, self).setUp()
         addon = Webapp.objects.get(pk=337141)
-        self.thread = CommunicationThread.objects.create(addon=addon)
+        self.list_url = reverse('comm-note-list')
+        self.thread = CommunicationThread.objects.create(addon=addon,
+            read_permission_developer=True)
+        self.thread_url = reverse('comm-thread-detail',
+                                  kwargs={'pk': self.thread.id})
+        self.profile.addonuser_set.create(addon=addon)
 
     def test_response(self):
         note = CommunicationNote.objects.create(author=self.profile,
-            thread=self.thread, note_type=0, body='something')
+            thread=self.thread, note_type=const.NOACTION, body='something')
         res = self.client.get(reverse('comm-note-detail',
                                       kwargs={'pk': note.id}))
         eq_(res.status_code, 200)
         eq_(res.json['body'], 'something')
+
+    def test_creation(self):
+        res = self.client.post(self.list_url, data=json.dumps(
+            {'thread': self.thread_url, 'author': self.profile.id,
+             'note_type': '0', 'body': 'something'}))
+        eq_(res.status_code, 201)
+        count = CommunicationThreadToken.objects.filter(
+            thread=self.thread, user=self.profile).count()
+        eq_(count, 1)
+
+    def test_creation_denied(self):
+        self.thread.read_permission_developer = False
+        self.thread.save()
+        res = self.client.post(self.list_url, data=json.dumps(
+            {'thread': self.thread_url, 'author': self.profile.id,
+             'note_type': '0', 'body': 'something'}))
+        eq_(res.status_code, 403)
+
+    def test_creation_by_diff_user_denied(self):
+        """
+        Test that the creation by specifying a different user as author fails.
+        """
+        self.thread.read_permission_developer = True
+        self.thread.save()
+        res = self.client.post(self.list_url, data=json.dumps(
+            {'thread': self.thread_url, 'author': '999',
+             'note_type': '0', 'body': 'something'}))
+        eq_(res.status_code, 403)
