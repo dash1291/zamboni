@@ -191,7 +191,6 @@ class ReviewApp(ReviewBase):
             'comment': comm.REVIEWER_COMMENT,
             'reject': comm.REJECTION
         }
-
         thread = CommunicationThread.objects.filter(addon=self.addon,
             version=self.version)
 
