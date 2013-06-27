@@ -14,6 +14,7 @@ from django.utils import translation
 
 import mock
 import requests
+import waffle
 from nose import SkipTest
 from nose.tools import eq_, ok_
 from pyquery import PyQuery as pq
@@ -29,6 +30,7 @@ from amo.tests import (app_factory, check_links, days_ago,
                        formset, initial, version_factory)
 from amo.urlresolvers import reverse
 from amo.utils import isotime
+from comm.models import CommunicationThread, CommunicationThreadCC
 from devhub.models import ActivityLog, ActivityLogAttachment, AppLog
 from devhub.tests.test_models import ATTACHMENTS_DIR
 from editors.models import (CannedResponse, EscalationQueue, RereviewQueue,
@@ -908,6 +910,10 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         return Webapp.objects.get(id=337141)
 
     def post(self, data, queue='pending'):
+        # Set some action visibility form values.
+        data['action_visibility'] = ('senior_reviewer', 'reviewer', 'staff',
+                                     'mozilla_contact')
+        self.create_switch(name='comm-dashboard')
         res = self.client.post(self.url, data)
         self.assert3xx(res, reverse('reviewers.apps.queue_%s' % queue))
 
@@ -962,6 +968,17 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         eq_(msg.from_email, settings.NOBODY_EMAIL)
         eq_(msg.extra_headers['Reply-To'], settings.MKT_REVIEWERS_EMAIL)
 
+    def _check_thread(self):
+        thread = self.app.threads
+        eq_(thread.count(), 1)
+
+        thread = thread.get()
+        perms = ('senior_reviewer', 'reviewer', 'staff', 'mozilla_contact')
+
+        for key in perms:
+            perm = 'read_permission_%s' % key
+            assert getattr(thread, 'read_permission_%s' % key)
+
     def _check_admin_email(self, msg, subject):
         eq_(msg.to, [settings.MKT_SENIOR_EDITORS_EMAIL])
         eq_(msg.subject, '%s: %s' % (subject, self.app.name))
@@ -1014,6 +1031,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         msg = mail.outbox[0]
         self._check_email(msg, 'App Approved but waiting')
         self._check_email_body(msg)
+        self._check_thread()
 
     def test_pending_to_reject_w_device_overrides(self):
         # This shouldn't be possible unless there's form hacking.
@@ -1037,6 +1055,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         msg = mail.outbox[0]
         self._check_email(msg, 'Submission Update')
         self._check_email_body(msg)
+        self._check_thread()
 
     def test_pending_to_public_w_requirements_overrides(self):
         self.create_switch(name='buchets')
@@ -1101,6 +1120,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         msg = mail.outbox[0]
         self._check_email(msg, 'App Approved')
         self._check_email_body(msg)
+        self._check_thread()
         self._check_score(amo.REVIEWED_WEBAPP_HOSTED)
 
         assert update_name.called
@@ -1172,6 +1192,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         msg = mail.outbox[0]
         self._check_email(msg, 'App Approved', with_mozilla_contact=False)
         self._check_email_body(msg)
+        self._check_thread()
         self._check_score(amo.REVIEWED_WEBAPP_HOSTED)
 
     @mock.patch('addons.tasks.index_addons')
@@ -1196,6 +1217,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         msg = mail.outbox[0]
         self._check_email(msg, 'App Approved but waiting')
         self._check_email_body(msg)
+        self._check_thread()
         self._check_score(amo.REVIEWED_WEBAPP_HOSTED)
 
         assert not update_name.called
@@ -1229,6 +1251,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         msg = mail.outbox[0]
         self._check_email(msg, 'Submission Update')
         self._check_email_body(msg)
+        self._check_thread()
         self._check_score(amo.REVIEWED_WEBAPP_HOSTED)
 
     def test_multiple_versions_reject_hosted(self):
@@ -1282,6 +1305,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         self._check_email(dev_msg, 'Submission Update')
         adm_msg = mail.outbox[1]
         self._check_admin_email(adm_msg, 'Escalated Review Requested')
+        self._check_thread()
 
     def test_pending_to_disable_senior_reviewer(self):
         self.login_as_senior_reviewer()
@@ -1296,6 +1320,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         self._check_log(amo.LOG.APP_DISABLED)
         eq_(len(mail.outbox), 1)
         self._check_email(mail.outbox[0], 'App disabled by reviewer')
+        self._check_thread()
 
     def test_pending_to_disable(self):
         self.app.update(status=amo.STATUS_PUBLIC)
@@ -1324,6 +1349,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         msg = mail.outbox[0]
         self._check_email(msg, 'App Approved')
         self._check_email_body(msg)
+        self._check_thread()
 
     def test_escalation_to_reject(self):
         EscalationQueue.objects.create(addon=self.app)
@@ -1342,6 +1368,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         eq_(len(mail.outbox), 1)
         msg = mail.outbox[0]
         self._check_email(msg, 'Submission Update')
+        self._check_thread()
         self._check_email_body(msg)
         self._check_score(amo.REVIEWED_WEBAPP_HOSTED)
 
@@ -1360,6 +1387,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         eq_(EscalationQueue.objects.count(), 0)
         eq_(len(mail.outbox), 1)
         self._check_email(mail.outbox[0], 'App disabled by reviewer')
+        self._check_thread()
 
     def test_escalation_to_disable(self):
         EscalationQueue.objects.create(addon=self.app)
@@ -1400,6 +1428,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         self._check_email(msg, 'Submission Update')
         self._check_email_body(msg)
         self._check_score(amo.REVIEWED_WEBAPP_REREVIEW)
+        self._check_thread()
 
     def test_rereview_to_disable_senior_reviewer(self):
         self.login_as_senior_reviewer()
@@ -1415,6 +1444,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         eq_(RereviewQueue.objects.filter(addon=self.app).count(), 0)
         eq_(len(mail.outbox), 1)
         self._check_email(mail.outbox[0], 'App disabled by reviewer')
+        self._check_thread()
 
     def test_rereview_to_disable(self):
         RereviewQueue.objects.create(addon=self.app)
@@ -1453,6 +1483,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         self._check_email(dev_msg, 'Submission Update')
         adm_msg = mail.outbox[1]
         self._check_admin_email(adm_msg, 'Escalated Review Requested')
+        self._check_thread()
 
     def test_more_information(self):
         # Test the same for all queues.
@@ -1487,6 +1518,7 @@ class TestReviewApp(AppReviewerTest, AccessMixin, AttachmentManagementMixin,
         self.post(data)
         eq_(len(mail.outbox), 0)
         self._check_log(amo.LOG.COMMENT_VERSION)
+        self._check_thread()
 
     def test_receipt_no_node(self):
         res = self.client.get(self.url)
