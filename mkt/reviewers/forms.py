@@ -44,6 +44,17 @@ class ReviewAppForm(happyforms.Form):
         choices=[(k, v.name) for k, v in amo.DEVICE_TYPES.items()],
         coerce=int, label=_lazy(u'Device Type Override:'),
         widget=forms.CheckboxSelectMultiple, required=False)
+
+    thread_perms = [('developer', _lazy('Developers')),
+                    ('reviewer', _lazy('Reviewers')),
+                    ('senior_reviewer', _lazy('Senior Reviewers')),
+                    ('staff', _lazy('Staff')),
+                    ('mozilla_contact', _lazy('Mozilla Contact'))]
+    action_visibility = forms.TypedMultipleChoiceField(
+        choices=thread_perms,
+        coerce=str, label=_lazy('Action Visibility:'),
+        widget=forms.CheckboxSelectMultiple, required=False)
+
     notify = forms.BooleanField(
         required=False, label=_lazy(u'Notify me the next time the manifest is '
                                     u'updated. (Subsequent updates will not '
@@ -80,6 +91,10 @@ class ReviewAppForm(happyforms.Form):
             addon=self.helper.addon).values_list('device_type', flat=True)
         if device_types:
             self.initial['device_override'] = device_types
+
+        # Default the permission selection.
+        self.initial['action_visibility'] = ['mozilla_contact', 'reviewer',
+                                             'senior_reviewer', 'staff']
 
     def is_valid(self):
         result = super(ReviewAppForm, self).is_valid()

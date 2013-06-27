@@ -79,6 +79,7 @@ function initReviewActions() {
         $data_toggle.filter('[data-value*="' + value + '"]').show();
 
         toggle_input();
+        toggle_permissions(value);
 
         /* Fade out canned responses */
         var label = $element.text().trim();
@@ -105,6 +106,16 @@ function initReviewActions() {
         // Add a dummy, disabled input
         $files_input.prop('checked', true).hide();
         $files_input.after($('<input>', {'type': 'checkbox', 'checked': true, 'disabled': true}));
+    }
+
+    function toggle_permissions(action){
+        var $permissions = $('input[name="action_visibility"]');
+        $permissions.prop('checked', true);
+        if(action !== 'comment') {
+            $permissions[0].checked = true;
+        } else {
+            $permissions[0].checked = false;
+        }
     }
 
     function toggle_input(){
