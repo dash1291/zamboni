@@ -21,6 +21,7 @@ from comm.models import (CommunicationNote, CommunicationThread,
 from mkt.api.authentication import (RestOAuthAuthentication,
                                     RestSharedSecretAuthentication)
 from mkt.api.base import CORSViewSet
+from mkt.reviewers.utils import send_note_emails
 from mkt.webpay.forms import PrepareForm
 
 
@@ -240,3 +241,8 @@ class NoteViewSet(ListModelMixin, CreateModelMixin, RetrieveModelMixin,
 
         return super(NoteViewSet, self).get_serializer(data=data_dict,
             files=files, instance=instance, many=many, partial=partial)
+
+    def create(self, request, thread_id):
+        res = CreateModelMixin.create(self, request)
+        send_note_emails(self.object)
+        return res
