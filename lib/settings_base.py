@@ -1564,3 +1564,6 @@ API_THROTTLE = True
 
 # Cache timeout on the /search/featured API.
 CACHE_SEARCH_FEATURED_API_TIMEOUT = 60 * 60  # 1 hour.
+
+# Override this with the path to the emails dump directory.
+EMAILS_DIRECTORY = TMP_PATH
