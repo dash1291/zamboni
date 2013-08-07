@@ -23,6 +23,7 @@ from comm.utils import filter_notes_by_read_status, ThreadObjectPermission
 from mkt.api.authentication import (RestOAuthAuthentication,
                                     RestSharedSecretAuthentication)
 from mkt.api.base import CORSViewSet
+from mkt.reviewers.utils import send_note_emails
 from mkt.webpay.forms import PrepareForm
 from rest_framework.response import Response
 
@@ -261,7 +262,12 @@ class NoteViewSet(ListModelMixin, CreateModelMixin, RetrieveModelMixin,
         for key in ('developer', 'reviewer', 'senior_reviewer',
                     'mozilla_contact', 'staff'):
             perm = 'read_permission_%s' % key
+
             setattr(obj, perm, getattr(parent, perm))
+
+    def post_save(self, obj, created=False):
+        if created:
+            send_note_emails(obj)
 
     def pre_save(self, obj):
         """Inherit permissions from the thread."""
