@@ -20,12 +20,12 @@ from addons.models import Addon
 from users.models import UserProfile
 from comm.models import (CommunicationNote, CommunicationNoteRead,
                          CommunicationThread)
-from comm.tasks import consume_email, mark_thread_read
+from comm.tasks import consume_email, mark_thread_read, send_note_emails
 from comm.utils import filter_notes_by_read_status, ThreadObjectPermission
 from mkt.api.authentication import (RestOAuthAuthentication,
                                     RestSharedSecretAuthentication)
 from mkt.api.base import CORSMixin
-from mkt.reviewers.utils import send_note_emails
+from mkt.reviewers.utils import send_mail
 from mkt.webpay.forms import PrepareForm
 
 
@@ -268,7 +268,7 @@ class NoteViewSet(ListModelMixin, CreateModelMixin, RetrieveModelMixin,
 
     def post_save(self, obj, created=False):
         if created:
-            send_note_emails(obj)
+            send_note_emails.apply_async((obj, send_mail))
 
     def pre_save(self, obj):
         """Inherit permissions from the thread."""

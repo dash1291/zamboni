@@ -18,10 +18,9 @@ from amo.urlresolvers import reverse
 from amo.utils import JSONEncoder, send_mail_jinja, to_language
 from comm.models import (CommunicationNote, CommunicationThread,
                          CommunicationThreadCC)
-from comm.utils import get_recipients
+from comm.tasks import send_note_emails
 from editors.models import EscalationQueue, RereviewQueue, ReviewerScore
 from files.models import File
-
 from mkt.constants import comm
 from mkt.constants.features import FeatureProfile
 from mkt.site.helpers import product_as_dict
@@ -44,25 +43,6 @@ def send_mail(subject, template, context, emails, perm_setting=None, cc=None,
                     perm_setting=perm_setting, manage_url=manage_url,
                     headers={'Reply-To': reply_to}, cc=cc,
                     attachments=attachments)
-
-
-def send_note_emails(note):
-    if not waffle.switch_is_active('comm-dashboard'):
-        return
-
-    recipients = get_recipients(note, False)
-    name = note.thread.addon.name
-    data = {
-        'name': name,
-        'sender': note.author.name,
-        'comments': note.body,
-        'thread_id': str(note.thread.id)
-    }
-    for email, tok in recipients:
-        reply_to = 'reply+%s@mozilla.org' % tok
-        subject = u'%s has been reviewed.' % name
-        send_mail(subject, 'reviewers/emails/decisions/post.txt', data,
-                  [email], perm_setting='app_reviewed', reply_to=reply_to)
 
 
 class ReviewBase(object):
@@ -143,17 +123,7 @@ class ReviewBase(object):
             data['tested'] = 'Tested with %s' % br
 
         if self.comm_thread and waffle.switch_is_active('comm-dashboard'):
-            recipients = get_recipients(self.comm_note)
-
-            data['thread_id'] = str(self.comm_thread.id)
-            for email, tok in recipients:
-                subject = u'%s has been reviewed.' % data['name']
-                reply_to = 'reply+%s@mozilla.org' % tok
-                send_mail(subject,
-                          'reviewers/emails/decisions/%s.txt' % template, data,
-                          [email], perm_setting='app_reviewed',
-                          attachments=self.get_attachments(),
-                          reply_to=reply_to)
+            send_note_emails.apply_async((self.comm_note, send_mail, data))
         else:
             emails = list(self.addon.authors.values_list('email', flat=True))
             cc_email = self.addon.mozilla_contact or None
