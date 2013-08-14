@@ -1568,3 +1568,9 @@ CACHE_SEARCH_FEATURED_API_TIMEOUT = 60 * 60  # 1 hour.
 # Whitelist IP addresses of the allowed clients that can post email
 # through the API.
 WHITELISTED_CLIENTS_EMAIL_API = []
+
+# Auth token required to authorize a postfix host.
+POSTFIX_AUTH_TOKEN = 'make-sure-to-override-this-with-a-long-weird-string'
+
+# Domain name of the postfix server.
+POSTFIX_DOMAIN = 'marketplace.firefox.com'
