@@ -1,5 +1,6 @@
 import os.path
 
+import commonware.log
 from django.conf import settings
 
 from nose.tools import eq_
@@ -13,6 +14,7 @@ from mkt.site.fixtures import fixture
 from users.models import UserProfile
 
 
+log = commonware.log.getLogger('comm')
 sample_email = os.path.join(settings.ROOT, 'apps', 'comm', 'tests',
                             'email.txt')
 
@@ -33,6 +35,11 @@ class TestEmailReplySaving(TestCase):
     def test_successful_save(self):
         self.grant_permission(self.profile, 'Apps:Review')
         email_text = self.email_template % self.token.uuid
+
+        # Log point to check why the test fails mysteriously.
+        log.debug('From test `test_successful_save`: uuid=%s' %
+                  self.token.uuid)
+        log.debug(email_text)
         note = save_from_email_reply(email_text)
         assert note
         eq_(note.body, 'This is the body')
